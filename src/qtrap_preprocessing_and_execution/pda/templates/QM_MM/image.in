@@ -1,0 +1,20 @@
+# image.in
+#
+# cpptraj template used by queue_pda_jobs.sh to prepare each trajectory for PDA.
+# Placeholders are replaced by queue_pda_jobs.sh:
+#   xa = topology file
+#   xx = input trajectory
+#   xz = first frame to process
+#   xy = output trajectory prefix
+
+parm xa
+trajin xx xz last 1
+
+autoimage
+
+# Align trajectory frames to the protein backbone before MMPBSA/PDA.
+rms first :1-149@C,CA,N,O
+
+trajout xy.nc
+
+go

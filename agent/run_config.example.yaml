@@ -1,0 +1,158 @@
+# run_config.example.yaml
+#
+# Copy to run_config.yaml and fill in. If freeze_coordinates is left blank,
+# it is asked for at runtime and/or during the run. All other fields must
+# be filled in prior to running.
+
+# ===== General -- shared across every run below, not per-structure =====
+
+project_name: ""
+
+hpc:
+  cluster: "hoffman2"
+  default_processors: 24        # Gsub.py -p
+  default_walltime_hours: 30    # Gsub.py -t
+
+pdb2oniom_dir: ""        # must contain .venv with pdb2oniom_py installed
+
+progdyn_dir: ""      # must contain Progdyn 2024 installation with necessary QM/MM dynamics script edits
+
+pytraj_env: ""       # conda environment containing pytraj, e.g. "amberpy"
+
+mdtraj_env: ""       # conda environment containing mdtraj, e.g. "amberpy"
+
+# In event of job failure, the agent may retry running the job a maximum of
+# max_attempts times. Default is 3.
+retry:
+  max_attempts: 3
+
+# ===== Per-run -- one entry per run below in runs:, organized by =====
+# ===== workflow step, for direct mapping between this file and    =====
+# ===== src/qtrap_preprocessing_and_execution/stepN/                =====
+#
+# Every distinct .nc file always gets its own separate run, even if
+# there's only one. The first run is filled in below (blank, ready to
+# edit); copy a whole block (from "- run_name:" through the last field)
+# to add another run.
+
+runs:
+  - run_name: ""
+
+    # --- step0: extract_restart_frames.sh, convert_restarts_to_pdb.sh ---
+    step0:
+      topology: ""       # e.g. 'system.prmtop', in start_files/
+      trajectory: ""     # e.g. 'system.nc', in start_files/
+      start_frame: null   # which frames to pull from the trajectory
+      end_frame: null      # above to seed the whole run
+      stride: null          # e.g. 1 to take every frame
+
+    # --- step1: reorg.sh ---
+    step1:
+      residue_number: ""   # the reactive residue's ORIGINAL position number,
+                             # before reordering. Different from residue_name
+                             # below (that's the residue's code, not its
+                             # position).
+
+    # --- step2: extract_ts.sh, parametrize_and_solvate.sh ---
+    step2:
+      residue_name: ""     # e.g. 'ITS'
+      ligand_charge: null   # net charge, e.g. 1.
+      charge_method: ""    # antechamber charge method, e.g. 'bcc'
+
+    # --- step3: strip_solvent_and_ions.sh ---
+    step3:
+      residue_range: ""       # residues to retain nearby solvent around, e.g.
+                                # '1-149'.
+      cutoff_angstrom: null   # solvent distance cutoff, e.g. 5.0
+
+    # --- step4: center.sh ---
+    # uses step2.residue_name above -- no new fields here
+
+    # --- step5: base_oniom_file_builder.sh, generate_oniom_input_files.sh ---
+    # field names below match generate_oniom_input_files.sh's positional
+    # arguments, except where noted
+    step5:
+      theory: ""               # e.g. wb97xd (auto-prefixed 'u' if use_mix and not already unrestricted)
+      basis: ""                # e.g. def2svp
+      overall_mult: null       # e.g., 1
+      ligand_mult: null        # e.g., 1
+      freeze_threshold: null   # passed to pdb2oniom_py -n
+      use_mix: false            # radical systems only
+      mix_only: false           # only relevant if use_mix
+      use_rigid: false          # *-rigid.com generated alongside normal outputs, not a separate run
+      use_freeze: true          # set false to skip TS freezing
+      freeze_coordinates: ""    # Gaussian ModRedundant freeze syntax, e.g. 'B 28 26 F' (bond) or
+                                 # 'D 19 20 22 23 F' (dihedral), one line per constraint. Fill in if known; else the agent asks after generating one
+                                 # numbered example structure:
+
+                                 # "B 28 26 F"
+                                 # "D 19 20 22 23 F"
+
+    # --- step6: submit_oniom_batch.sh, file_builder_job_status.sh ---
+    # uses hpc: and retry: above -- no new fields here
+
+    # --- step7: generate_hpmodes_spfreq_files.sh, submit again, status check ---
+    # no fields needed
+
+    # --- step8: revise_frequencies_batch.sh ---
+    # no fields needed
+
+    # --- step9: generate_aux_files_progdyn_batch.sh ---
+    # no fields needed
+
+    # --- step10: qmmm_dyn_prep.sh, sort_forward_reverse_dirs.sh, sort_trajs.sh ---
+    # dynamics runtime/frame range are hardcoded in the script itself ----
+    step10:
+      temperature: null      # e.g., 298.15. This parameter and all below refer to
+                               # progdyn.conf, where explicit documentation is present with 
+                               # more info on these parameters
+      thermostatmult: null    # e.g., 0.999
+      empiricaldispersion: null   # e.g., 0
+      radiusmultiplier: null      # e.g., 0
+      etolerance: null            # e.g., 50
+      damping: null               # e.g., 1.000
+
+    # --- pda: generate_ligand_enzyme_complex_parm.sh, prepare_and_queue_all_pda_jobs.sh,
+    #          queue_pda_jobs_md.sh, sort_pda_results.sh ---
+    # only reached after step0-10 finish; not used by any earlier step
+    pda:
+      frames_to_analyze: null   # native QM/MM PDA only, not used for MD PDA
+      ligand_mask: ""            # e.g. ':1'
+      receptor_mask: ""          # e.g. ':2-149'
+      strip_masks: ""            # e.g. ':WAT :Na+ :Cl-'
+
+  # A second run is just another full block like the one above, with its
+  # own run_name and its own values throughout:
+  #
+  # - run_name: ""
+  #   step0:
+  #     topology: ""
+  #     trajectory: ""
+  #     start_frame: null
+  #     end_frame: null
+  #     stride: null
+  #   step1:
+  #     residue_number: ""
+  #   step2:
+  #     residue_name: ""
+  #     ligand_charge: null
+  #     charge_method: ""
+  #   step3:
+  #     residue_range: ""
+  #     cutoff_angstrom: null
+  #   step5:
+  #     theory: ""
+  #     basis: ""
+  #     overall_mult: null
+  #     ligand_mult: null
+  #     freeze_threshold: null
+  #     use_mix: false
+  #     mix_only: false
+  #     use_rigid: false
+  #     use_freeze: true
+  #     freeze_coordinates: ""
+  #   pda:
+  #     frames_to_analyze: null
+  #     ligand_mask: ""
+  #     receptor_mask: ""
+  #     strip_masks: ""
