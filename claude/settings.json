@@ -1,0 +1,35 @@
+{
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "1800000",
+    "BASH_MAX_TIMEOUT_MS": "1800000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(agent/tools/run_remote.sh *)",
+      "Bash(agent/tools/job_status.sh *)",
+      "Bash(agent/tools/copy_files.sh *)",
+      "Bash(bash agent/tools/run_remote.sh *)",
+      "Bash(bash agent/tools/job_status.sh *)",
+      "Bash(bash agent/tools/copy_files.sh *)",
+      "Bash(mkdir -p runs/**)",
+      "Bash(cp src/qtrap_analysis/*)",
+      "Write(runs/*/qtrap_analysis/**)",
+      "Read(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "Edit(agent/lessons.md)"
+    ],
+    "deny": [
+      "Bash(ssh*)",
+      "Bash(scp*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
+      "Bash(rm -r*)",
+      "Bash(rm -f*)",
+      "Read(agent/.env)",
+      "Read(**/.env)",
+      "Edit(src/**)",
+      "Write(src/**)"
+    ]
+  }
+}

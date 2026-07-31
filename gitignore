@@ -1,0 +1,23 @@
+# Agent-specific: contains real values, never commit
+agent/.env
+agent/run_config.yaml
+
+# Run data: project-specific, never commit
+runs/
+
+# Additional run data located in the src/ directory: commit the directory, 
+# not the project-specific files within
+src/qtrap_preprocessing_and_execution/start_files/*
+!src/qtrap_preprocessing_and_execution/start_files/INITIATE.md
+
+# Local settings file created per Claude interactive session. Project-specific, never commit
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS/editor junk
+.DS_Store
+*.swp
