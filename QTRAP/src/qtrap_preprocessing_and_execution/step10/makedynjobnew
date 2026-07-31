@@ -1,0 +1,225 @@
+# NOTE:
+# This is a pre-existing Progdyn job setup script included for workflow
+# completeness. It was not written by the repository author.
+#
+# The script contains system-specific Progdyn, Gaussian, and queue settings and
+# may require modification before use on other systems.
+
+#!/bin/bash
+# Job submission script for progdyn version 2017.
+# progdyn package adapted from: J. Am. Chem. Soc. 2017, 139, 15710−15723
+# originally published: J. Am. Chem. Soc. 2003, 125, 1176-1177
+# 	scripts adapted Aug/2019 by Tyler in the Houk group
+
+#Revise progdynstarterHP
+progdir=$1
+
+# Just incase to update the program so it will know where it is.
+sed -i "s\.*proggramdir=.*\proggramdir=$progdir\g" $progdir/progdynstarterHP
+
+echo "You are in the process of submitting a dynamics job using progdyn version 2017 using Gaussian 2016. Welcome!"
+echo "  progdyn is running from this directory: $progdir"
+
+#cd ./n1
+a=`pwd`
+echo "  current working directory: $a"
+echo "----------------------------------------------------------------"
+echo "Directory $a must contain the following files:"
+echo " * progdyn.conf - for the configuration parameters of the dynamics job."
+echo " * proganal - for analysis and bond forming/breaking parameters."
+echo " * freqinHP - This file is your output file from an hpmodes frequency calculation."
+echo "It is mandatory to edit progdyn.conf for your job; proganal should be edited but can be ignored for testing."
+echo "searching directory for these files...."
+if [ -f freqinHP ];
+then
+	 echo "file freqinHP exists as the frequency input file"
+else
+#elif [ -f *.out ];
+   # script for looking for other hpmode output file here.
+   echo "no freqinHP file found, exiting."
+   exit 0
+fi
+if [ -f progdyn.conf ];
+then
+	 echo "file progdyn.conf exists"
+else
+   echo "no progdyn.conf file found, exiting."
+   exit 0
+fi
+if [ -f proganal ];
+then
+	 echo "file proganal exists"
+else
+   echo "no proganal file found, exiting."
+   exit 0
+fi
+echo "all files found!"
+echo ""
+echo "optional files that may be needed Are:"
+echo " - cannontraj"
+echo " - methodfile"
+echo " - nonstandard"
+echo "Read the README documentation for more information."
+echo "----------------------------------------------------------------"
+
+# can this be done on an inital setup?
+chmod 755 $progdir/progdynstarterHP
+dos2unix $progdir/* 2>/dev/null
+# Convert files in current dir for those who use inferior windows
+dos2unix *
+
+#need to decide if it is better to keep program in bin or cp to n1...
+#	I think the speed will be limited the same in both cases...
+
+# get proccesor count from progdyn.conf
+nproc=`awk '/^processors/ {print $2}' progdyn.conf`
+
+# get memory from progdyn.conf and converting to MB to do maths.
+memIn=`awk '/^memory/ {print $2}' progdyn.conf`
+case "$memIn" in
+	*MB )
+		mem=${memIn%MB}
+		memMB=$mem ;;
+	*mb )
+		mem=${memIn%mb}
+		memMB=$mem ;;
+	*GB )
+		mem=${memIn%GB}
+		memMB=$[$mem * 1024] ;;
+	*gb )
+		mem=${memIn%gb}
+		memMB=$[$mem * 1024] ;;
+	*MW )
+		mem=${memIn%MW}
+		memMB=$[$mem * 8] ;;
+	*mw )
+		mem=${memIn%mw}
+		memMB=$[$mem * 8] ;;
+	*GW )
+		mem=${memIn%GW}
+		memMB=$[$mem * 8192] ;;
+	*gq )
+		mem=${memIn%gw}
+		memMB=$[$mem * 8192] ;;
+esac
+
+# including extra ram to ensure spare room for gaussian i/o and overhead.
+if [ "$nproc" -eq 1 ]; then
+	# for serial jobs add 1024MB to memory from gaussian input file
+	memJob=$[memMB + 1024]
+	memCore=$memJob
+else
+	# for parallel jobs use formula from a wiki of another cluster, forgot where.
+	# Works perfectly when staying between 1-4GB per core, adding ~1-4GB total extra usually.
+	# works less perfectly is going outside of 1-4GB per core, but people shouldn't be doing that anyway...
+	memJob=$[( memMB + 1024) * ( nproc + 1) / nproc]
+	memCore=$[memJob / nproc]
+fi
+
+echo "----------------------------------------------------------------"
+echo "In progdyn.conf, you have requested the following resources:"
+echo " - number of processors per job: $nproc"
+echo " - mem for gaussian inputfile: $memIn"
+echo "calculating memory required for job with an additional buffer...."
+echo " ... converted mem to MB: $memMB"
+echo " - mem for job (total in MB): $memJob"
+echo " - mem for job (per core in MB): $memCore"
+echo ""
+echo "enter a runtime in hours:"
+read runtime
+echo " - runtime will be $runtime hours"
+
+# Making new dynamics directories: This replicates the n1 file (only the files needed)
+# echo "Please input the number of dynamics jobs you would like to run concurrently. Replicates n1 directory X times based on your input number."
+# read m
+# echo " - $m jobs will be run concurently in their corresponding directories that are created now!"
+
+# EDITED BY ALFONSO 04/21/2025
+# This version will check if previous simulations exist.
+# Then it will ask the user for the number of the first directory. i.e 3
+# It will also ask about the number of the last directory. i.e 15
+# If simulations with numbers between initial and end exist, they will be re-submitted
+# If simulation with a specified number does not exist, the directory is created and the job submited
+# In the example, simulations labeled from 3-15 will be submitted or re-submitted
+
+job_n=`ls -d n*/ | wc -l`
+echo ""
+echo "Number of previous sims in current directory: $job_n"
+##########
+echo "Input the number for the first directory. If number matches existing directory, that simulation will be resumed."
+read i
+initial=$i
+
+echo "Input the number of the last simulation. If number matches existing directory, that simulation will be resumed. If not new simulations will be created."
+read m
+end=$m
+
+if [[ $i -ge $m ]]; then
+        echo "Initial number $i cannot be greater or equal than las number $m"
+        exit
+fi
+
+n=$((${m}-${i}+1))
+echo " - $n jobs will be run concurently in their corresponding directories that are created now!"
+###############################################################################
+
+while [ $i -le $m ]
+     do
+      mkdir -p ./n$i
+      echo "################################################" > ./n$i/subdynjob.n$i.job
+      echo "#!/bin/bash -l" >> ./n$i/subdynjob.n$i.job
+      echo "#$ -cwd" >> ./n$i/subdynjob.n$i.job
+      echo "#$ -o joblog.dynjob."'$JOB_ID' >> ./n$i/subdynjob.n$i.job
+      echo "#$ -j y" >> ./n$i/subdynjob.n$i.job
+      echo "#$ -M "'$USER@mail' >> ./n$i/subdynjob.n$i.job
+      echo "#$ -m bea" >> ./n$i/subdynjob.n$i.job
+      echo "#$ -l h_data=${memCore}M,h_rt=$runtime:00:00,arch=intel-[Eg][5o][l-]*" >> ./n$i/subdynjob.n$i.job
+      echo "#$ -pe shared* $nproc" >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "set echo" >> ./n$i/subdynjob.n$i.job
+      echo "cd "'$SGE_O_WORKDIR' >> ./n$i/subdynjob.n$i.job
+      echo "echo Current directory: "'$SGE_O_WORKDIR' >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "export SCRDIR="'$TMPDIR' >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "mkdir -p "'$SCRDIR'"/dynjob/n$i" >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "scratch="'$SCRDIR'"/dynjob/n$i" >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "submitdir="'$SGE_O_WORKDIR'"/n$i" >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "prog=$progdir/progdynstarterHP" >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "echo program to be run is: "'$prog' >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo '$prog' '$submitdir' '$scratch' '$SGE_O_WORKDIR' >> ./n$i/subdynjob.n$i.job
+      echo "" >> ./n$i/subdynjob.n$i.job
+      echo "################################################" >> ./n$i/subdynjob.n$i.job
+# EDITED BY RIVER–subdyn now operates from parent dir, not n*
+      mv ./n$i/subdynjob.n$i.job ./subdynjob.n$i.job
+      cp ./progdyn.conf ./n$i
+      cp ./proganal ./n$i
+      cp ./methodfile ./n$i #It is fine if you don't have these files, piping output (2>/dev/null) supresses error message.
+      cp ./freqinHP ./n$i
+      cp ./AtomAmber ./n$i
+      cp ./cannontraj ./n$i 2>/dev/null #ditto above comment
+      cp ./nonstandard ./n$i 2>/dev/null  #ditto above comment
+      #sed -i "s\/n1\/n$i\g" ./n$i/job
+      #sed -i "s\n$i/progdynstarterHP\n1/progdynstarterHP\g" ./n$i/job
+      i=$(($i+1))
+done
+
+# Submit job: This part submits the job, also includes a question regarding your sanity.
+echo "Are you sure that you want to submit? Type yes or no."
+read y
+if [ "$y" = "yes" ]; then
+echo "Houston, igniting rockets ..."
+for f in `seq ${initial} ${end}`; do
+        echo $f
+        qsub ./subdynjob.n${f}.job
+done
+echo "We have lift off!"
+else
+echo "How do you expect to push the frontiers of science with that attitude! Goodbye!"
+exit 0
+fi
