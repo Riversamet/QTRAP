@@ -1,7 +1,0 @@
-parm Bruene_B.prmtop
-trajin Bruene_B.nc 1 last 50
-autoimage
-# optional: fit protein backbone
-rms first :1-149@C,CA,N,O
-trajout Bruene_B-i.nc
-go
